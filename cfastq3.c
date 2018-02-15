@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,7 +101,7 @@ int main(int argc, char **argv) {
     FILE *f_out = stdout;
     if (file_out_orig) {
         if (chunk_size > 0) {
-            asprintf(&file_out, "0_%s", file_out_orig);
+            asprintf(&file_out, "%s_0.fastq", file_out_orig);
         } else {
             asprintf(&file_out, "%s", file_out_orig);
         }
@@ -165,7 +169,7 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "Generated: %s\n", file_out);
             }
 
-            asprintf(&file_out, "%d_%s", file_counter, file_out_orig);
+            asprintf(&file_out, "%s_%d.fastq", file_out_orig, file_counter);
             
             if (debug_mode) {
                 fprintf(stderr, "Generating: %s\n", file_out);
