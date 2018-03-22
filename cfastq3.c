@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
         bc = seq_i1->seq.s;
         qt = seq_i1->qual.s;
         
-        fprintf(f_out, "@%s|||BC||||||QT||||||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n", seq_r1->name.s, cr, cy, ur, uy, bc, qt, seq_r2->comment.s);
+        fprintf(f_out, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n", seq_r1->name.s, cr, cy, ur, uy, bc, qt, seq_r2->comment.s);
         fprintf(f_out, "%s\n+\n%s\n", seq_r2->seq.s, seq_r2->qual.s);
 
         counter = counter + 1;
