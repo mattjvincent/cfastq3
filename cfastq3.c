@@ -9,11 +9,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#include "khash.h"
 #include "kseq.h"
+#include "libbloom/bloom.h"
 
 KSEQ_INIT(gzFile, gzread)
-KHASH_SET_INIT_STR(str)
 
 void print_usage(char **argv) {
     fprintf(stderr, "Usage: %s [-dn] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
@@ -149,11 +148,8 @@ int main(int argc, char **argv) {
         debug_chunk = chunk_size;
     }
 
-    int absent;
-    khint_t k;
-
-    // allocate a hash table
-    khash_t(str) *h = kh_init(str);
+    struct bloom bloom;
+    bloom_init(&bloom, 100000000, 0.001); // THESE WORK
 
     /*
     CR = R1.sequence[:16]
@@ -176,23 +172,31 @@ int main(int argc, char **argv) {
     //name, comment, seq, qual; )
     int counter = 0;
     int file_counter = 0;
-    int not_unique_counter = 0;
+    int skip_counter = 0;
+    int keep_counter = 0;
+
     while (kseq_read(seq_r1) >= 0) {
         kseq_read(seq_r2);
         kseq_read(seq_i1);
 
         if (dedup) {
-            int buf_size = seq_r1->seq.l + seq_r2->seq.l + seq_i1->seq.l;
-            char *buf = malloc(buf_size);
-            snprintf(buf, buf_size, "%s%s%s", seq_r1->seq.s, seq_r2->seq.s, seq_i1->seq.s);
 
-            int absent;
-            k = kh_put(str, h, buf, &absent);
-            if (absent) {
-                kh_key(h, k) = strdup(buf);
-            } else {
+            int buf_size = seq_r1->seq.l + seq_r2->seq.l + seq_i1->seq.l;
+            char *buf = (char *)malloc(sizeof(char) * buf_size);
+            snprintf(buf, buf_size, "%s%s%s", seq_r1->seq.s, seq_r2->seq.s, seq_i1->seq.s);
+ 
+            if (bloom_check(&bloom, buf, buf_size)) {
+                //fprintf(stderr, "buf in bloom: %s\n", buf);
+                skip_counter += 1;
                 continue;
+            } else {
+                keep_counter += 1;
             }
+
+            bloom_add(&bloom, buf, buf_size);
+
+
+            //fprintf(stderr, "buf NOT in bloom: %s\n", buf);
         }
 
         memcpy(cr, &seq_r1->seq.s[0], 16);
@@ -216,6 +220,7 @@ int main(int argc, char **argv) {
             double time_chunk = ((double)t_temp)/CLOCKS_PER_SEC; // in seconds
 
             fprintf(stderr, "Reads: %d, Chunk Time: %f, Total Time: %f\n", counter, time_chunk, time_total);
+            fprintf(stderr, "Skips: %d, Keeps: %d\n", skip_counter, keep_counter);
 
             t_chunk = clock();
         }
@@ -261,8 +266,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Done. Reads: %d, Total Time: %f\n", counter, time_total);
     }
 
-    // deallocate the hash table
-    kh_destroy(str, h);
 
     return 0;
 }
