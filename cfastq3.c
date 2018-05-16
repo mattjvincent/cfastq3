@@ -8,29 +8,37 @@
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
+
+#include "khash.h"
 #include "kseq.h"
+
 KSEQ_INIT(gzFile, gzread)
+KHASH_SET_INIT_STR(str)
 
 void print_usage(char **argv) {
-    fprintf(stderr, "Usage: %s [-d] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-dn] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
 }
 
 
 int main(int argc, char **argv) {
     bool debug_mode = false;
+    bool dedup = true;
     int chunk_size = 0;
     char *filename_output_original = NULL;
     int option = 0;
 
     opterr = 0;
 
-    while ((option = getopt(argc, argv, "c:do:")) != -1) {
+    while ((option = getopt(argc, argv, "c:dno:")) != -1) {
         switch (option) {
             case 'c':
                 chunk_size = atoi(optarg);
                 break;
             case 'd':
                 debug_mode = true;
+                break;
+            case 'n':
+                dedup = false;
                 break;
             case 'o':
                 asprintf(&filename_output_original, "%s", optarg);
@@ -76,6 +84,12 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Output: %s\n", filename_output_original);
         }
         fprintf(stderr, "Chunk size: %d\n", chunk_size);
+
+        if (dedup) {
+            fprintf(stderr, "Dedup mode: ON\n");
+        } else {
+            fprintf(stderr, "Dedup mode: OFF\n");
+        }
     }
 
     // timers for debugging
@@ -85,7 +99,6 @@ int main(int argc, char **argv) {
 
     t_start = clock();
     t_chunk = clock();
-
 
     /* setup I1 */
     gzFile fp_i1;
@@ -130,12 +143,17 @@ int main(int argc, char **argv) {
         f_out = fopen(filename_output, "w");
     }
     
-
     int debug_chunk = 1000000;
 
     if (chunk_size > 0) {
         debug_chunk = chunk_size;
     }
+
+    int absent;
+    khint_t k;
+
+    // allocate a hash table
+    khash_t(str) *h = kh_init(str);
 
     /*
     CR = R1.sequence[:16]
@@ -158,9 +176,24 @@ int main(int argc, char **argv) {
     //name, comment, seq, qual; )
     int counter = 0;
     int file_counter = 0;
+    int not_unique_counter = 0;
     while (kseq_read(seq_r1) >= 0) {
         kseq_read(seq_r2);
         kseq_read(seq_i1);
+
+        if (dedup) {
+            int buf_size = seq_r1->seq.l + seq_r2->seq.l + seq_i1->seq.l;
+            char *buf = malloc(buf_size);
+            snprintf(buf, buf_size, "%s%s%s", seq_r1->seq.s, seq_r2->seq.s, seq_i1->seq.s);
+
+            int absent;
+            k = kh_put(str, h, buf, &absent);
+            if (absent) {
+                kh_key(h, k) = strdup(buf);
+            } else {
+                continue;
+            }
+        }
 
         memcpy(cr, &seq_r1->seq.s[0], 16);
         memcpy(cy, &seq_r1->qual.s[0], 16);
@@ -170,8 +203,8 @@ int main(int argc, char **argv) {
         bc = seq_i1->seq.s;
         qt = seq_i1->qual.s;
         
-        fprintf(f_out, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n", seq_r1->name.s, cr, cy, ur, uy, bc, qt, seq_r2->comment.s);
-        fprintf(f_out, "%s\n+\n%s\n", seq_r2->seq.s, seq_r2->qual.s);
+        //fprintf(f_out, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n", seq_r1->name.s, cr, cy, ur, uy, bc, qt, seq_r2->comment.s);
+        //fprintf(f_out, "%s\n+\n%s\n", seq_r2->seq.s, seq_r2->qual.s);
 
         counter = counter + 1;
 
@@ -227,6 +260,9 @@ int main(int argc, char **argv) {
 
         fprintf(stderr, "Done. Reads: %d, Total Time: %f\n", counter, time_total);
     }
+
+    // deallocate the hash table
+    kh_destroy(str, h);
 
     return 0;
 }
