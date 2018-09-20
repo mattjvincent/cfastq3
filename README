@@ -1,1 +1,18 @@
 
+# cfastq3
+
+cfastq3 combined I1, R1 and R2 files into a single Fastq file with new tags to be used downstream.  Chunking into multiple files is possible for downstream multiprocessing.
+
+| Tools | URL |
+| ------ | ------ |
+| alntools | https://churchill-lab.github.io/alntools/ |
+
+
+### Compiling
+
+Simple type 'make' in the directory.
+
+
+### Development
+
+Contact [Kwangbom "KB" Choi, Ph.D.](https://www.jax.org/research-and-faculty/faculty/research-scientists/kb-choi)
