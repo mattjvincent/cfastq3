@@ -21,27 +21,31 @@ void print_usage(char **argv) {
 
 
 int main(int argc, char **argv) {
-    bool debug_mode = false;
+    bool debugMode = false;
     bool dedup = true;
-    int chunk_size = 0;
-    char *filename_output_original = NULL;
+    int chunkSize = 0;
+    char *filenameOutputOption = NULL;
+    char *experimentIDOption = NULL;
     int option = 0;
 
     opterr = 0;
 
-    while ((option = getopt(argc, argv, "c:dno:")) != -1) {
+    while ((option = getopt(argc, argv, "c:de:no:")) != -1) {
         switch (option) {
             case 'c':
-                chunk_size = atoi(optarg);
+                chunkSize = atoi(optarg);
                 break;
             case 'd':
-                debug_mode = true;
+                debugMode = true;
+                break;
+            case 'e':
+                asprintf(&experimentIDOption, "%s", optarg);
                 break;
             case 'n':
                 dedup = false;
                 break;
             case 'o':
-                asprintf(&filename_output_original, "%s", optarg);
+                asprintf(&filenameOutputOption, "%s", optarg);
                 break;
             default:
                 print_usage(argv);
@@ -49,41 +53,45 @@ int main(int argc, char **argv) {
             }
     }
 
+    char *experimentID = NULL;
+
     /* sample barcode */
-    char* filename_i1 = NULL;
+    char* filenameI1 = NULL;
 
     /* cell barcode + UMI */
-    char* filename_r1 = NULL;
+    char* filenameR1 = NULL;
 
     /* reads */
-    char* filename_r2 = NULL;
+    char* filenameR2 = NULL;
 
     /* output file */
-    char* filename_output = NULL;
+    char* filenameOutputFASTQ = NULL;
 
     if ((argc - optind) == 3) {
-        filename_i1 = argv[optind];
-        filename_r1 = argv[optind+1];
-        filename_r2 = argv[optind+2];
+        filenameI1 = argv[optind];
+        filenameR1 = argv[optind+1];
+        filenameR2 = argv[optind+2];
     } else {
         print_usage(argv);
         exit(EXIT_FAILURE);
     }
 
 
-    if ((chunk_size != 0) && (!filename_output_original)) {
+    if ((chunkSize != 0) && (!filenameOutputOption)) {
         fprintf(stderr, "-c cannot be specified when using stdout");
         exit(EXIT_FAILURE);
     }
 
-    if (debug_mode) {
-        fprintf(stderr, "I1: %s\n", filename_i1);
-        fprintf(stderr, "R1: %s\n", filename_r1);
-        fprintf(stderr, "R2: %s\n", filename_r2);
-        if (filename_output_original) {
-            fprintf(stderr, "Output: %s\n", filename_output_original);
+    if (debugMode) {
+        fprintf(stderr, "I1: %s\n", filenameI1);
+        fprintf(stderr, "R1: %s\n", filenameR1);
+        fprintf(stderr, "R2: %s\n", filenameR2);
+
+        if (filenameOutputOption) {
+            fprintf(stderr, "Output: %s\n", filenameOutputOption);
         }
-        fprintf(stderr, "Chunk size: %d\n", chunk_size);
+
+        fprintf(stderr, "Chunk size: %d\n", chunkSize);
 
         if (dedup) {
             fprintf(stderr, "Dedup mode: ON\n");
@@ -93,63 +101,79 @@ int main(int argc, char **argv) {
     }
 
     // timers for debugging
-    clock_t t_start;
-    clock_t t_chunk;
-    clock_t t_temp;
+    clock_t timeStart;
+    clock_t timeChunk;
+    clock_t timeTemp;
 
-    t_start = clock();
-    t_chunk = clock();
+    timeStart = clock();
+    timeChunk = clock();
 
     /* setup I1 */
-    gzFile fp_i1;
-    kseq_t *seq_i1;
-    FILE *f_i1 = fopen(filename_i1, "rb");
-    if (f_i1 == NULL) {
-        fprintf(stderr, "Can't open: %s\n", filename_i1);
+    gzFile gzI1;
+    kseq_t *seqI1;
+    FILE *fpI1 = fopen(filenameI1, "rb");
+
+    if (fpI1 == NULL) {
+        fprintf(stderr, "Can't open: %s\n", filenameI1);
         exit(EXIT_FAILURE);
     }
-    fp_i1 = gzdopen(fileno(f_i1), "r");
-    seq_i1 = kseq_init(fp_i1);
+
+    gzI1 = gzdopen(fileno(fpI1), "r");
+    seqI1 = kseq_init(gzI1);
 
     /* setup R1 */
-    gzFile fp_r1;
-    kseq_t *seq_r1;
-    FILE *f_r1 = fopen(filename_r1, "rb");
-    if (f_r1 == NULL) {
-        fprintf(stderr, "Can't open: %s\n", filename_r1);
+    gzFile gzR1;
+    kseq_t *seqR1;
+    FILE *fpR1 = fopen(filenameR1, "rb");
+
+    if (fpR1 == NULL) {
+        fprintf(stderr, "Can't open: %s\n", filenameR1);
         exit(EXIT_FAILURE);
     }
-    fp_r1 = gzdopen(fileno(f_r1), "r");
-    seq_r1 = kseq_init(fp_r1);
+
+    gzR1 = gzdopen(fileno(fpR1), "r");
+    seqR1 = kseq_init(gzR1);
     
     /* setup R2 */
-    gzFile fp_r2;
-    kseq_t *seq_r2;
-    FILE *f_r2 = fopen(filename_r2, "rb");
-    if (f_r2 == NULL) {
-        fprintf(stderr, "Can't open: %s\n", filename_r2);
+    gzFile gzR2;
+    kseq_t *seqR2;
+    FILE *fpR2 = fopen(filenameR2, "rb");
+
+    if (fpR2 == NULL) {
+        fprintf(stderr, "Can't open: %s\n", filenameR2);
         exit(EXIT_FAILURE);
     }
-    fp_r2 = gzdopen(fileno(f_r2), "r");
-    seq_r2 = kseq_init(fp_r2);
 
-    FILE *f_out = stdout;
-    if (filename_output_original) {
-        if (chunk_size > 0) {
-            asprintf(&filename_output, "%s_0.fastq", filename_output_original);
+    gzR2 = gzdopen(fileno(fpR2), "r");
+    seqR2 = kseq_init(gzR2);
+
+    FILE *fpOut = stdout;
+
+    if (filenameOutputOption) {
+        if (chunkSize > 0) {
+            asprintf(&filenameOutputFASTQ, "%s_0.fastq", filenameOutputOption);
         } else {
-            asprintf(&filename_output, "%s", filename_output_original);
+            asprintf(&filenameOutputFASTQ, "%s", filenameOutputOption);
         }
-        f_out = fopen(filename_output, "w");
-    }
-    
-    int debug_chunk = 1000000;
-
-    if (chunk_size > 0) {
-        debug_chunk = chunk_size;
+        fpOut = fopen(filenameOutputFASTQ, "w");
     }
 
-    int absent;
+    if (experimentIDOption) {
+        asprintf(&experimentID, "%s", experimentIDOption);
+    } else {
+        if (filenameOutputOption) {
+            asprintf(&experimentID, "%s", filenameOutputOption);
+        } else {
+            experimentID = "exp01";
+        }
+    }
+
+    int chunkSizeDebug = 1000000;
+
+    if (chunkSize > 0) {
+        chunkSizeDebug = chunkSize;
+    }
+
     khint_t k;
 
     // allocate a hash table
@@ -173,21 +197,22 @@ int main(int argc, char **argv) {
     memset(ur, '\0', 11);
     memset(uy, '\0', 11);
 
-    //name, comment, seq, qual; )
-    int counter = 0;
-    int file_counter = 0;
-    int not_unique_counter = 0;
-    while (kseq_read(seq_r1) >= 0) {
-        kseq_read(seq_r2);
-        kseq_read(seq_i1);
+    //name, comment, seq, qual;
+    int nCounter = 0;
+    int nFiles = 0;
+
+    while (kseq_read(seqR1) >= 0) {
+        kseq_read(seqR2);
+        kseq_read(seqI1);
 
         if (dedup) {
-            int buf_size = seq_r1->seq.l + seq_r2->seq.l + seq_i1->seq.l;
+            int buf_size = seqR1->seq.l + seqR2->seq.l + seqI1->seq.l;
             char *buf = malloc(buf_size);
-            snprintf(buf, buf_size, "%s%s%s", seq_r1->seq.s, seq_r2->seq.s, seq_i1->seq.s);
+            snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s, seqR2->seq.s, seqI1->seq.s);
 
             int absent;
             k = kh_put(str, h, buf, &absent);
+
             if (absent) {
                 kh_key(h, k) = strdup(buf);
             } else {
@@ -195,70 +220,71 @@ int main(int argc, char **argv) {
             }
         }
 
-        memcpy(cr, &seq_r1->seq.s[0], 16);
-        memcpy(cy, &seq_r1->qual.s[0], 16);
-        memcpy(ur, &seq_r1->seq.s[16], 10);
-        memcpy(uy, &seq_r1->qual.s[16], 10);
+        memcpy(cr, &seqR1->seq.s[0], 16);
+        memcpy(cy, &seqR1->qual.s[0], 16);
+        memcpy(ur, &seqR1->seq.s[16], 10);
+        memcpy(uy, &seqR1->qual.s[16], 10);
 
-        bc = seq_i1->seq.s;
-        qt = seq_i1->qual.s;
+        bc = seqI1->seq.s;
+        qt = seqI1->qual.s;
         
-        //fprintf(f_out, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n", seq_r1->name.s, cr, cy, ur, uy, bc, qt, seq_r2->comment.s);
-        //fprintf(f_out, "%s\n+\n%s\n", seq_r2->seq.s, seq_r2->qual.s);
+        fprintf(fpOut, "@%s|||CID|||%s:%s:%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n",
+                seqR1->name.s, experimentID, bc, cr, cr, cy, ur, uy, bc, qt, seqR2->comment.s);
+        fprintf(fpOut, "%s\n+\n%s\n", seqR2->seq.s, seqR2->qual.s);
 
-        counter = counter + 1;
+        nCounter = nCounter + 1;
 
-        if ((debug_mode) && ((counter % debug_chunk) == 0)) {
-            t_temp = clock() - t_start;
-            double time_total = ((double)t_temp)/CLOCKS_PER_SEC; // in seconds
+        if ((debugMode) && ((nCounter % chunkSizeDebug) == 0)) {
+            timeTemp = clock() - timeStart;
+            double time_total = ((double)timeTemp)/CLOCKS_PER_SEC; // in seconds
 
-            t_temp = clock() - t_chunk;
-            double time_chunk = ((double)t_temp)/CLOCKS_PER_SEC; // in seconds
+            timeTemp = clock() - timeChunk;
+            double time_chunk = ((double)timeTemp)/CLOCKS_PER_SEC; // in seconds
 
-            fprintf(stderr, "Reads: %d, Chunk Time: %f, Total Time: %f\n", counter, time_chunk, time_total);
+            fprintf(stderr, "Reads: %d, Chunk Time: %f, Total Time: %f\n", nCounter, time_chunk, time_total);
 
-            t_chunk = clock();
+            timeChunk = clock();
         }
 
-        if ((chunk_size > 0) && (counter % chunk_size) == 0) {
-            fclose(f_out);
-            file_counter = file_counter + 1;
+        if ((chunkSize > 0) && (nCounter % chunkSize) == 0) {
+            fclose(fpOut);
+            nFiles = nFiles + 1;
 
-            if (debug_mode) {
-                fprintf(stderr, "Generated: %s\n", filename_output);
+            if (debugMode) {
+                fprintf(stderr, "Generated: %s\n", filenameOutputFASTQ);
             }
 
-            asprintf(&filename_output, "%s_%d.fastq", filename_output_original, file_counter);
+            asprintf(&filenameOutputFASTQ, "%s_%d.fastq", filenameOutputOption, nFiles);
             
-            if (debug_mode) {
-                fprintf(stderr, "Generating: %s\n", filename_output);
+            if (debugMode) {
+                fprintf(stderr, "Generating: %s\n", filenameOutputFASTQ);
             }
 
-            f_out = fopen(filename_output, "w");
+            fpOut = fopen(filenameOutputFASTQ, "w");
         }
     }
 
-    kseq_destroy(seq_i1);
-    fclose(f_i1);
-    gzclose(fp_i1);
+    kseq_destroy(seqI1);
+    fclose(fpI1);
+    gzclose(gzI1);
 
-    kseq_destroy(seq_r1);
-    fclose(f_r1);
-    gzclose(fp_r1);
+    kseq_destroy(seqR1);
+    fclose(fpR1);
+    gzclose(gzR1);
 
-    kseq_destroy(seq_r2);
-    fclose(f_r2);
-    gzclose(fp_r2);
+    kseq_destroy(seqR2);
+    fclose(fpR2);
+    gzclose(gzR2);
 
-    fclose(f_out);
+    fclose(fpOut);
 
-    if (debug_mode) {
-        fprintf(stderr, "Generated: %s\n", filename_output);
+    if (debugMode) {
+        fprintf(stderr, "Generated: %s\n", filenameOutputFASTQ);
 
-        t_temp = clock() - t_start;
-        double time_total = ((double)t_temp)/CLOCKS_PER_SEC; // in seconds
+        timeTemp = clock() - timeStart;
+        double time_total = ((double)timeTemp)/CLOCKS_PER_SEC; // in seconds
 
-        fprintf(stderr, "Done. Reads: %d, Total Time: %f\n", counter, time_total);
+        fprintf(stderr, "Done. Reads: %d, Total Time: %f\n", nCounter, time_total);
     }
 
     // deallocate the hash table
