@@ -228,8 +228,8 @@ int main(int argc, char **argv) {
         bc = seqI1->seq.s;
         qt = seqI1->qual.s;
 
-        fprintf(fpOut, "@%s|||CID|||%s:%s:%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s %s\n",
-                seqR1->name.s, experimentID, bc, cr, cr, cy, ur, uy, bc, qt, seqR2->comment.s);
+        fprintf(fpOut, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s|||CID|||%s:%s:%s %s\n",
+                seqR1->name.s, cr, cy, ur, uy, bc, qt, experimentID, bc, cr, seqR2->comment.s);
         fprintf(fpOut, "%s\n+\n%s\n", seqR2->seq.s, seqR2->qual.s);
 
         nCounter = nCounter + 1;
