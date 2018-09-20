@@ -8,7 +8,6 @@ default: all
 all: cfastq3
 
 cfastq3: cfastq3.c
-	$(CC) $(CFLAGS) $(LIBS) -o test test.c
 	$(CC) $(CFLAGS) $(LIBS) -o cfastq3 cfastq3.c
 
 clean veryclean:
