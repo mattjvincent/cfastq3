@@ -206,9 +206,11 @@ int main(int argc, char **argv) {
         kseq_read(seqI1);
 
         if (dedup) {
-            int buf_size = seqR1->seq.l + seqR2->seq.l + seqI1->seq.l;
+            //int buf_size = seqR1->seq.l + seqR2->seq.l + seqI1->seq.l;
+            int buf_size = seqR1->seq.l + seqI1->seq.l;
             char *buf = malloc(buf_size);
-            snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s, seqR2->seq.s, seqI1->seq.s);
+            //snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s, seqR2->seq.s, seqI1->seq.s);
+            snprintf(buf, buf_size, "%s%s", seqR1->seq.s, seqI1->seq.s);
 
             int absent;
             k = kh_put(str, h, buf, &absent);
