@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
         //fprintf(fpOut, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s|||CID|||%s:%s:%s %s\n",
         //        seqR1->name.s, cr, cy, ur, uy, bc, qt, experimentID, bc, cr, seqR2->comment.s);
         fprintf(fpOut, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s|||CID|||%s-%s %s\n",
-                seqR1->name.s, cr, cy, ur, uy, bc, qt, experimentID, cr, seqR2->comment.s);
+                seqR1->name.s, cr, cy, ur, uy, bc, qt, cr, experimentID, seqR2->comment.s);
         fprintf(fpOut, "%s\n+\n%s\n", seqR2->seq.s, seqR2->qual.s);
 
         nCounter = nCounter + 1;
