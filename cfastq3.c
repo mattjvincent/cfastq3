@@ -69,15 +69,15 @@ int main(int argc, char **argv) {
     char* filenameOutputFASTQ = NULL;
 
     /* R2 only or also R1 and I1 */
-    int threeFiles = 0;
+    bool threeFiles = false;
 
     if ((argc - optind) == 3) {
-        threeFiles = 1;
+        threeFiles = true;
         filenameI1 = argv[optind];
         filenameR1 = argv[optind+1];
         filenameR2 = argv[optind+2];
     } else if ((argc - optind) == 1) {
-        threeFiles = 0;
+        threeFiles = false;
         //filenameI1 = argv[optind];
         //filenameR1 = argv[optind+1];
         filenameR2 = argv[optind];
