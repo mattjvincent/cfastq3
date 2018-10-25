@@ -17,7 +17,7 @@ KHASH_SET_INIT_STR(str)
 
 void print_usage(char **argv) {
     fprintf(stderr, "Usage: %s [-den] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
-    fprintf(stderr, "       %s [-den] [-c chunk_size] [-o output.fastq] r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, " -or-  %s [-den] [-c chunk_size] [-o output.fastq] r2.fastq.gz\n", argv[0]);
 }
 
 
@@ -54,6 +54,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* experiment identifier */
     char *experimentID = NULL;
 
     /* sample barcode */
@@ -68,23 +69,22 @@ int main(int argc, char **argv) {
     /* output file */
     char* filenameOutputFASTQ = NULL;
 
-    /* R2 only or also R1 and I1 */
-    bool threeFiles = false;
+    /* three file input */
+    int threeFiles = 1;
 
     if ((argc - optind) == 3) {
-        threeFiles = true;
+        threeFiles = 1;
         filenameI1 = argv[optind];
         filenameR1 = argv[optind+1];
         filenameR2 = argv[optind+2];
     } else if ((argc - optind) == 1) {
-        threeFiles = false;
-        //filenameI1 = argv[optind];
-        //filenameR1 = argv[optind+1];
+        threeFiles = 0;
         filenameR2 = argv[optind];
     } else {
         print_usage(argv);
         exit(EXIT_FAILURE);
     }
+
 
     if ((chunkSize != 0) && (!filenameOutputOption)) {
         fprintf(stderr, "-c cannot be specified when using stdout");
@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     }
 
     if (debugMode) {
-        if (threeFiles)
+        if (threeFiles) {
             fprintf(stderr, "I1: %s\n", filenameI1);
             fprintf(stderr, "R1: %s\n", filenameR1);
         }
@@ -123,15 +123,14 @@ int main(int argc, char **argv) {
     /* setup I1 */
     gzFile gzI1;
     kseq_t *seqI1;
-    FILE *fpI1 = NULL;
-    
+    FILE *fpI1;
+
     /* setup R1 */
     gzFile gzR1;
     kseq_t *seqR1;
-    FILE *fpR1 = NULL;
+    FILE *fpR1;
 
     if (threeFiles) {
-        // 3 files specified
         fpI1 = fopen(filenameI1, "rb");
 
         if (fpI1 == NULL) {
@@ -151,7 +150,16 @@ int main(int argc, char **argv) {
 
         gzR1 = gzdopen(fileno(fpR1), "r");
         seqR1 = kseq_init(gzR1);
+    } else {
+        gzI1 = NULL;
+        seqI1 = NULL;
+        fpI1 = NULL;
+
+        gzR1 = NULL;
+        seqR1 = NULL;
+        fpR1 = NULL;
     }
+
 
     /* setup R2 */
     gzFile gzR2;
@@ -228,7 +236,7 @@ int main(int argc, char **argv) {
             if (dedup) {
                 int buf_size = seqR1->seq.l;
                 char *buf = malloc(buf_size);
-                snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s);
+                snprintf(buf, buf_size, "%s", seqR1->seq.s);
 
                 int absent;
                 k = kh_put(str, h, buf, &absent);
