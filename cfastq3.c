@@ -16,7 +16,8 @@ KSEQ_INIT(gzFile, gzread)
 KHASH_SET_INIT_STR(str)
 
 void print_usage(char **argv) {
-    fprintf(stderr, "Usage: %s [-dn] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-den] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, "       %s [-den] [-c chunk_size] [-o output.fastq] r2.fastq.gz\n", argv[0]);
 }
 
 
@@ -67,15 +68,23 @@ int main(int argc, char **argv) {
     /* output file */
     char* filenameOutputFASTQ = NULL;
 
+    /* R2 only or also R1 and I1 */
+    int threeFiles = 0;
+
     if ((argc - optind) == 3) {
+        threeFiles = 1;
         filenameI1 = argv[optind];
         filenameR1 = argv[optind+1];
         filenameR2 = argv[optind+2];
+    } else if ((argc - optind) == 1) {
+        threeFiles = 0;
+        //filenameI1 = argv[optind];
+        //filenameR1 = argv[optind+1];
+        filenameR2 = argv[optind];
     } else {
         print_usage(argv);
         exit(EXIT_FAILURE);
     }
-
 
     if ((chunkSize != 0) && (!filenameOutputOption)) {
         fprintf(stderr, "-c cannot be specified when using stdout");
@@ -83,8 +92,11 @@ int main(int argc, char **argv) {
     }
 
     if (debugMode) {
-        fprintf(stderr, "I1: %s\n", filenameI1);
-        fprintf(stderr, "R1: %s\n", filenameR1);
+        if (threeFiles)
+            fprintf(stderr, "I1: %s\n", filenameI1);
+            fprintf(stderr, "R1: %s\n", filenameR1);
+        }
+
         fprintf(stderr, "R2: %s\n", filenameR2);
 
         if (filenameOutputOption) {
@@ -111,28 +123,35 @@ int main(int argc, char **argv) {
     /* setup I1 */
     gzFile gzI1;
     kseq_t *seqI1;
-    FILE *fpI1 = fopen(filenameI1, "rb");
-
-    if (fpI1 == NULL) {
-        fprintf(stderr, "Can't open: %s\n", filenameI1);
-        exit(EXIT_FAILURE);
-    }
-
-    gzI1 = gzdopen(fileno(fpI1), "r");
-    seqI1 = kseq_init(gzI1);
-
+    FILE *fpI1 = NULL;
+    
     /* setup R1 */
     gzFile gzR1;
     kseq_t *seqR1;
-    FILE *fpR1 = fopen(filenameR1, "rb");
+    FILE *fpR1 = NULL;
 
-    if (fpR1 == NULL) {
-        fprintf(stderr, "Can't open: %s\n", filenameR1);
-        exit(EXIT_FAILURE);
+    if (threeFiles) {
+        // 3 files specified
+        fpI1 = fopen(filenameI1, "rb");
+
+        if (fpI1 == NULL) {
+            fprintf(stderr, "Can't open: %s\n", filenameI1);
+            exit(EXIT_FAILURE);
+        }
+
+        gzI1 = gzdopen(fileno(fpI1), "r");
+        seqI1 = kseq_init(gzI1);
+
+        fpR1 = fopen(filenameR1, "rb");
+
+        if (fpR1 == NULL) {
+            fprintf(stderr, "Can't open: %s\n", filenameR1);
+            exit(EXIT_FAILURE);
+        }
+
+        gzR1 = gzdopen(fileno(fpR1), "r");
+        seqR1 = kseq_init(gzR1);
     }
-
-    gzR1 = gzdopen(fileno(fpR1), "r");
-    seqR1 = kseq_init(gzR1);
 
     /* setup R2 */
     gzFile gzR2;
@@ -201,35 +220,41 @@ int main(int argc, char **argv) {
     int nCounter = 0;
     int nFiles = 0;
 
-    while (kseq_read(seqR1) >= 0) {
-        kseq_read(seqR2);
-        kseq_read(seqI1);
+    while (kseq_read(seqR2) >= 0) {
+        if (threeFiles) {
+            kseq_read(seqR1);
+            kseq_read(seqI1);
 
-        if (dedup) {
-            int buf_size = seqR1->seq.l + seqR2->seq.l + seqI1->seq.l;
-            char *buf = malloc(buf_size);
-            snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s, seqR2->seq.s, seqI1->seq.s);
+            if (dedup) {
+                int buf_size = seqR1->seq.l;
+                char *buf = malloc(buf_size);
+                snprintf(buf, buf_size, "%s%s%s", seqR1->seq.s);
 
-            int absent;
-            k = kh_put(str, h, buf, &absent);
+                int absent;
+                k = kh_put(str, h, buf, &absent);
 
-            if (absent) {
-                kh_key(h, k) = strdup(buf);
-            } else {
-                continue;
+                if (absent) {
+                    kh_key(h, k) = strdup(buf);
+                } else {
+                    continue;
+                }
             }
+
+            memcpy(cr, &seqR1->seq.s[0], 16);
+            memcpy(cy, &seqR1->qual.s[0], 16);
+            memcpy(ur, &seqR1->seq.s[16], 10);
+            memcpy(uy, &seqR1->qual.s[16], 10);
+
+            bc = seqI1->seq.s;
+            qt = seqI1->qual.s;
+
+            fprintf(fpOut, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s|||CID|||%s-%s %s\n",
+                    seqR2->name.s, cr, cy, ur, uy, bc, qt, cr, experimentID, seqR2->comment.s);
+        } else {
+            fprintf(fpOut, "@%s|||CR||||||CY||||||UR||||||UY||||||BC||||||QT||||||CID|||%s %s\n",
+                    seqR2->name.s, experimentID, seqR2->comment.s);
         }
 
-        memcpy(cr, &seqR1->seq.s[0], 16);
-        memcpy(cy, &seqR1->qual.s[0], 16);
-        memcpy(ur, &seqR1->seq.s[16], 10);
-        memcpy(uy, &seqR1->qual.s[16], 10);
-
-        bc = seqI1->seq.s;
-        qt = seqI1->qual.s;
-
-        fprintf(fpOut, "@%s|||CR|||%s|||CY|||%s|||UR|||%s|||UY|||%s|||BC|||%s|||QT|||%s|||CID|||%s:%s:%s %s\n",
-                seqR1->name.s, cr, cy, ur, uy, bc, qt, experimentID, bc, cr, seqR2->comment.s);
         fprintf(fpOut, "%s\n+\n%s\n", seqR2->seq.s, seqR2->qual.s);
 
         nCounter = nCounter + 1;
@@ -264,13 +289,15 @@ int main(int argc, char **argv) {
         }
     }
 
-    kseq_destroy(seqI1);
-    fclose(fpI1);
-    gzclose(gzI1);
+    if (threeFiles) {
+        kseq_destroy(seqI1);
+        fclose(fpI1);
+        gzclose(gzI1);
 
-    kseq_destroy(seqR1);
-    fclose(fpR1);
-    gzclose(gzR1);
+        kseq_destroy(seqR1);
+        fclose(fpR1);
+        gzclose(gzR1);
+    }
 
     kseq_destroy(seqR2);
     fclose(fpR2);
