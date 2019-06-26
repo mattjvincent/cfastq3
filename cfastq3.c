@@ -16,15 +16,16 @@ KSEQ_INIT(gzFile, gzread)
 KHASH_SET_INIT_STR(str)
 
 void print_usage(char **argv) {
-    fprintf(stderr, "Usage: %s [-denv] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
-    fprintf(stderr, " -or-  %s [-denv] [-c chunk_size] [-o output.fastq] r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-den] [-b barcode_size] [-u umi_size] [-c chunk_size] [-o output.fastq] i1.fastq.gz r1.fastq.gz r2.fastq.gz\n", argv[0]);
+    fprintf(stderr, " -or-  %s [-den] [-b barcode_size] [-u umi_size] [-c chunk_size] [-o output.fastq] r2.fastq.gz\n", argv[0]);
 }
 
 
 int main(int argc, char **argv) {
     bool debugMode = false;
     bool dedup = true;
-    bool v3 = false;
+    int umiSize = 12;
+    int barcodeSize = 16;
     int chunkSize = 0;
     char *filenameOutputOption = NULL;
     char *experimentIDOption = NULL;
@@ -32,8 +33,11 @@ int main(int argc, char **argv) {
 
     opterr = 0;
 
-    while ((option = getopt(argc, argv, "c:de:no:v")) != -1) {
+    while ((option = getopt(argc, argv, "b:c:de:no:u:")) != -1) {
         switch (option) {
+            case 'b':
+                barcodeSize = atoi(optarg);
+                break;
             case 'c':
                 chunkSize = atoi(optarg);
                 break;
@@ -49,8 +53,8 @@ int main(int argc, char **argv) {
             case 'o':
                 asprintf(&filenameOutputOption, "%s", optarg);
                 break;
-            case 'v':
-                v3 = true;
+            case 'u':
+                umiSize = atoi(optarg);
                 break;
             default:
                 print_usage(argv);
@@ -217,24 +221,16 @@ int main(int argc, char **argv) {
     UY = R1.quality[16:]
     */
 
-    int lnCRCY = 16;
-    int lnURUY = 10;
-
-    if (v3) {
-        lnCRCY = 16;
-        lnURUY = 12;
-    }
-
-    char cr[lnCRCY + 1];
-    char cy[lnCRCY + 1];
-    char ur[lnURUY + 1];
-    char uy[lnURUY + 1];
+    char cr[barcodeSize + 1];
+    char cy[barcodeSize + 1];
+    char ur[umiSize + 1];
+    char uy[umiSize + 1];
     char *bc = NULL;   // I1.seq
     char *qt = NULL;   // I1.qual
-    memset(cr, '\0', lnCRCY + 1);
-    memset(cy, '\0', lnCRCY + 1);
-    memset(ur, '\0', lnURUY + 1);
-    memset(uy, '\0', lnURUY + 1);
+    memset(cr, '\0', barcodeSize + 1);
+    memset(cy, '\0', barcodeSize + 1);
+    memset(ur, '\0', umiSize + 1);
+    memset(uy, '\0', umiSize + 1);
 
     //name, comment, seq, qual;
     int nCounter = 0;
@@ -260,10 +256,10 @@ int main(int argc, char **argv) {
                 }
             }
 
-            memcpy(cr, &seqR1->seq.s[0], lnCRCY);
-            memcpy(cy, &seqR1->qual.s[0], lnCRCY);
-            memcpy(ur, &seqR1->seq.s[lnCRCY], lnURUY);
-            memcpy(uy, &seqR1->qual.s[lnCRCY], lnURUY);
+            memcpy(cr, &seqR1->seq.s[0], barcodeSize);
+            memcpy(cy, &seqR1->qual.s[0], barcodeSize);
+            memcpy(ur, &seqR1->seq.s[barcodeSize], umiSize);
+            memcpy(uy, &seqR1->qual.s[barcodeSize], umiSize);
 
             bc = seqI1->seq.s;
             qt = seqI1->qual.s;
